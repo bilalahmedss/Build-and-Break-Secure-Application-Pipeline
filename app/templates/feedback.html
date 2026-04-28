@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Feedback · NexusPortal{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Contact and feedback</p>
+    <h1>Feedback</h1>
+    <p class="muted">Submit issues, feature requests, and security observations.</p>
+  </div>
+</section>
+
+<section class="split-layout">
+  <form class="form-card" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>
+      Category
+      <select name="category" required>
+        {% for category in feedback_categories %}
+          <option value="{{ category }}">{{ category }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Message
+      <textarea name="message" rows="6" minlength="10" maxlength="500" required></textarea>
+    </label>
+    <button class="button" type="submit">Submit feedback</button>
+  </form>
+
+  <div class="section-block">
+    <div class="section-heading"><h2>Submitted feedback</h2></div>
+    <div class="feedback-list">
+      {% for item in feedback_items %}
+        <article>
+          <div class="card-top">
+            <span class="status">{{ item.category }}</span>
+            <span>{{ item.status }}</span>
+          </div>
+          <p>{{ item.message }}</p>
+          <small>{{ item.username }} · {{ item.submitted_at }}</small>
+        </article>
+      {% else %}
+        <p class="empty">No feedback submitted yet.</p>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endblock %}

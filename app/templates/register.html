@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Register · NexusPortal{% endblock %}
+
+{% block content %}
+<section class="auth-layout">
+  <div>
+    <p class="eyebrow">New member</p>
+    <h1>Create an account</h1>
+    <p class="muted">New registrations start as members. Admins can later change roles.</p>
+  </div>
+
+  <form class="form-card" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>
+      Username
+      <input name="username" value="{{ username or '' }}" minlength="3" maxlength="30" required>
+    </label>
+    <label>
+      Email
+      <input name="email" type="email" value="{{ email or '' }}" required>
+    </label>
+    <label>
+      Password
+      <input name="password" type="password" minlength="8" required>
+    </label>
+    <label>
+      Confirm password
+      <input name="confirm_password" type="password" minlength="8" required>
+    </label>
+    <button class="button" type="submit">Create account</button>
+  </form>
+</section>
+{% endblock %}

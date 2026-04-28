@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Login · NexusPortal{% endblock %}
+
+{% block content %}
+<section class="auth-layout">
+  <div>
+    <p class="eyebrow">Welcome back</p>
+    <h1>Sign in to NexusPortal</h1>
+    <p class="muted">Use a username or email address. Sessions are cleared on login and logout.</p>
+  </div>
+
+  <form class="form-card" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>
+      Username or email
+      <input name="identifier" type="text" autocomplete="username" required>
+    </label>
+    <label>
+      Password
+      <input name="password" type="password" autocomplete="current-password" required>
+    </label>
+    <button class="button" type="submit">Login</button>
+    <p class="form-note">No account yet? <a href="{{ url_for('register') }}">Register as a member</a>.</p>
+  </form>
+</section>
+{% endblock %}

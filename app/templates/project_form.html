@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}{{ mode }} Project · NexusPortal{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <div>
+    <p class="eyebrow">{{ mode }} project</p>
+    <h1>{{ mode }} project</h1>
+    <p class="muted">Titles, descriptions, and statuses are validated before storage.</p>
+  </div>
+</section>
+
+<form class="form-card wide" method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>
+    Title
+    <input name="title" minlength="3" maxlength="80" value="{{ project.title if project else '' }}" required>
+  </label>
+  <label>
+    Description
+    <textarea name="description" minlength="10" maxlength="500" rows="6" required>{{ project.description if project else '' }}</textarea>
+  </label>
+  <label>
+    Status
+    <select name="status" required>
+      {% for status in project_statuses %}
+        <option value="{{ status }}" {% if project and project.status == status %}selected{% endif %}>{{ status }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <div class="actions">
+    <button class="button" type="submit">{{ mode }} project</button>
+    <a class="button ghost" href="{{ url_for('projects') }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

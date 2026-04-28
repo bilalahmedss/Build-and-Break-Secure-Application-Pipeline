@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Projects · NexusPortal{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Core workflow</p>
+    <h1>Projects</h1>
+    <p class="muted">Search, filter, create, update, and review project work by role.</p>
+  </div>
+  {% if current_user.role in ['admin', 'member'] %}
+    <a class="button" href="{{ url_for('new_project') }}">New project</a>
+  {% endif %}
+</section>
+
+<form class="filters" method="get">
+  <input name="q" value="{{ q }}" placeholder="Search projects">
+  <select name="status">
+    <option value="">All statuses</option>
+    {% for status in project_statuses %}
+      <option value="{{ status }}" {% if selected_status == status %}selected{% endif %}>{{ status }}</option>
+    {% endfor %}
+  </select>
+  <button class="button secondary" type="submit">Filter</button>
+  <a class="button ghost" href="{{ url_for('projects') }}">Reset</a>
+</form>
+
+<section class="project-grid">
+  {% for project in projects %}
+    <article class="project-card">
+      <div class="card-top">
+        <span class="status">{{ project.status }}</span>
+        <span>{{ project.owner_name }}</span>
+      </div>
+      <h2><a href="{{ url_for('project_detail', project_id=project.id) }}">{{ project.title }}</a></h2>
+      <p>{{ project.description }}</p>
+      <div class="card-meta">
+        <span>{{ project.task_count }} tasks</span>
+        <span>{{ project.done_count or 0 }} done</span>
+      </div>
+    </article>
+  {% else %}
+    <p class="empty">No projects match your filters.</p>
+  {% endfor %}
+</section>
+{% endblock %}

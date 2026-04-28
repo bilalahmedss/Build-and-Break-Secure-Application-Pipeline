@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · NexusPortal{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <div>
+    <p class="eyebrow">{{ current_user.role }} workspace</p>
+    <h1>Dashboard</h1>
+    <p class="muted">Role-aware summary for your projects, tasks, and security workflow.</p>
+  </div>
+  {% if current_user.role in ['admin', 'member'] %}
+    <a class="button" href="{{ url_for('new_project') }}">New project</a>
+  {% endif %}
+</section>
+
+<section class="metric-grid">
+  <article class="metric"><span>Projects</span><strong>{{ metrics.projects }}</strong></article>
+  <article class="metric"><span>Open tasks</span><strong>{{ metrics.open_tasks }}</strong></article>
+  {% if current_user.role == 'admin' %}
+    <article class="metric"><span>Users</span><strong>{{ metrics.users }}</strong></article>
+    <article class="metric"><span>Open feedback</span><strong>{{ metrics.open_feedback }}</strong></article>
+  {% else %}
+    <article class="metric"><span>Access</span><strong>{{ current_user.role|capitalize }}</strong></article>
+  {% endif %}
+</section>
+
+<section class="section-block">
+  <div class="section-heading">
+    <h2>Recent projects</h2>
+    <a href="{{ url_for('projects') }}">View all</a>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Project</th><th>Status</th><th>Owner</th><th>Updated</th></tr>
+      </thead>
+      <tbody>
+        {% for project in recent_projects %}
+          <tr>
+            <td><a href="{{ url_for('project_detail', project_id=project.id) }}">{{ project.title }}</a></td>
+            <td><span class="status">{{ project.status }}</span></td>
+            <td>{{ project.owner_name }}</td>
+            <td>{{ project.updated_at }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4" class="empty">No projects available yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

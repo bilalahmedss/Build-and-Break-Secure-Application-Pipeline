@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Admin · NexusPortal{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Admin only</p>
+    <h1>User and system control</h1>
+    <p class="muted">Manage role assignments and review portfolio distribution.</p>
+  </div>
+</section>
+
+<section class="section-block">
+  <div class="section-heading"><h2>Users</h2></div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>User</th><th>Email</th><th>Role</th><th>Projects</th><th>Feedback</th><th>Change role</th></tr>
+      </thead>
+      <tbody>
+        {% for user in users %}
+          <tr>
+            <td>{{ user.username }}</td>
+            <td>{{ user.email }}</td>
+            <td><span class="role {{ user.role }}">{{ user.role }}</span></td>
+            <td>{{ user.project_count }}</td>
+            <td>{{ user.feedback_count }}</td>
+            <td>
+              <form class="inline-form" method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="user_id" value="{{ user.id }}">
+                <select name="role">
+                  {% for role in roles %}
+                    <option value="{{ role }}" {% if user.role == role %}selected{% endif %}>{{ role }}</option>
+                  {% endfor %}
+                </select>
+                <button class="button small" type="submit">Save</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section-block">
+  <div class="section-heading"><h2>Project status</h2></div>
+  <div class="status-grid">
+    {% for row in status_rows %}
+      <article class="metric"><span>{{ row.status }}</span><strong>{{ row.total }}</strong></article>
+    {% else %}
+      <p class="empty">No project data yet.</p>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}
