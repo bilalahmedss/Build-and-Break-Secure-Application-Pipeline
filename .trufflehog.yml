@@ -1,0 +1,9 @@
+# TruffleHog configuration
+# Demo credentials documented in README are seeded local training accounts, not
+# production secrets. Real secrets must still be stored outside the repository.
+
+exclude_paths:
+  - README.md
+  - CLAUDE.md
+  - AGENTS.md
+  - docs/

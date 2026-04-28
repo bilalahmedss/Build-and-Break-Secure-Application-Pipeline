@@ -1,0 +1,51 @@
+name: Coverage — Test Suite & Code Coverage
+
+on:
+  push:
+    branches: [main, "claude/**", "feature/**", "fix/**", "group-*/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-and-coverage:
+    name: pytest + coverage.py
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install app dependencies
+        run: uv pip install --system -r app/requirements.txt
+
+      - name: Install test dependencies
+        run: uv pip install --system -r tests/requirements-test.txt
+
+      - name: Run tests with coverage
+        run: |
+          cd ${{ github.workspace }}
+          coverage run --source=app -m pytest tests/ -v
+        env:
+          FLASK_ENV: testing
+          FLASK_SECRET_KEY: test-secret-key-not-for-production
+
+      - name: Print coverage report
+        run: coverage report -m
+
+      - name: Generate HTML coverage report
+        run: coverage html -d coverage-html/
+
+      - name: Upload coverage HTML report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage-html/

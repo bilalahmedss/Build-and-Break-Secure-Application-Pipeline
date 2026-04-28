@@ -1,0 +1,16 @@
+.git
+.venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.coverage
+coverage-html
+tests
+docs
+*.md
+app/database/app.db
+bandit-results.json
+semgrep-results.json
+pip-audit-results.json
+safety-results.json
+zap-report.html

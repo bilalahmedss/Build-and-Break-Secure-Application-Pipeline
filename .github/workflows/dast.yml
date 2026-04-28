@@ -1,0 +1,78 @@
+name: DAST — Dynamic Application Security Testing (OWASP ZAP)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: "Target URL to scan (default: http://localhost:5000)"
+        required: false
+        default: "http://localhost:5000"
+
+jobs:
+  zap-baseline:
+    name: OWASP ZAP Baseline Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -f docker/Dockerfile \
+            -t build-and-break-app:ci \
+            .
+
+      - name: Start application container
+        run: |
+          docker run -d \
+            --name webapp \
+            -p 5000:5000 \
+            -e FLASK_ENV=production \
+            -e FLASK_DEBUG=0 \
+            build-and-break-app:ci
+
+      - name: Wait for application to be ready
+        run: |
+          echo "Waiting for app to start..."
+          timeout 60 bash -c \
+            'until curl -sf http://localhost:5000 > /dev/null; do sleep 2; done'
+          echo "Application is ready."
+
+      - name: Run OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: ${{ github.event.inputs.target_url || 'http://localhost:5000' }}
+          rules_file_name: ".zap/rules.tsv"
+          cmd_options: "-a -j"     # -a: AJAX spider, -j: use JSON report
+          fail_action: false       # record findings without failing the pipeline
+          artifact_name: zap-scan-report
+        continue-on-error: true    # never block; report is the deliverable
+
+      - name: Stop and remove application container
+        if: always()
+        run: |
+          docker stop webapp 2>/dev/null || true
+          docker rm   webapp 2>/dev/null || true
+
+  # ── How to run ZAP interactively (for Week 3 manual pentesting) ────────────
+  # Run the app locally first:
+  #   docker-compose -f docker/docker-compose.yml up --build -d
+  #
+  # Then run ZAP from Docker against the local app:
+  #   Baseline (passive + spider):
+  #     docker run --rm -t ghcr.io/zaproxy/zaproxy \
+  #       zap-baseline.py -t http://host.docker.internal:5000
+  #
+  #   Full active scan:
+  #     docker run --rm -t ghcr.io/zaproxy/zaproxy \
+  #       zap-full-scan.py -t http://host.docker.internal:5000
+  #
+  # Save ZAP HTML report:
+  #     docker run --rm -v $(pwd):/zap/wrk/:rw -t ghcr.io/zaproxy/zaproxy \
+  #       zap-baseline.py -t http://host.docker.internal:5000 \
+  #       -r zap-report.html

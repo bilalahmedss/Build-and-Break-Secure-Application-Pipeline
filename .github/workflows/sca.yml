@@ -1,0 +1,76 @@
+name: SCA — Software Composition Analysis
+
+on:
+  push:
+    branches: [main, "claude/**", "feature/**", "fix/**"]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly scan every Monday at 08:00 UTC — new CVEs are published daily
+    - cron: "0 8 * * 1"
+
+jobs:
+  pip-audit:
+    name: pip-audit (OSV Database)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Run pip-audit (JSON report)
+        run: |
+          pip-audit -r app/requirements.txt \
+                    --format json \
+                    --output pip-audit-results.json || true
+
+      - name: Run pip-audit (human-readable output)
+        run: |
+          echo "=== pip-audit Results (OSV Database) ==="
+          pip-audit -r app/requirements.txt || true
+
+      - name: Upload pip-audit results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pip-audit-results
+          path: pip-audit-results.json
+
+  safety:
+    name: Safety CLI (PyUp Safety Database)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Safety
+        run: pip install safety
+
+      - name: Run Safety (JSON report)
+        run: |
+          safety check -r app/requirements.txt \
+                       --json > safety-results.json 2>&1 || true
+
+      - name: Run Safety (human-readable output)
+        run: |
+          echo "=== Safety Check Results (PyUp Database) ==="
+          safety check -r app/requirements.txt || true
+
+      - name: Upload Safety results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: safety-results
+          path: safety-results.json

@@ -1,0 +1,99 @@
+name: SAST — Static Application Security Testing
+
+on:
+  push:
+    branches: [main, "claude/**", "feature/**", "fix/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  bandit:
+    name: Bandit Python Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Bandit
+        run: pip install bandit
+
+      - name: Run Bandit (JSON report)
+        run: |
+          bandit -r app/ -f json -o bandit-results.json || true
+
+      - name: Run Bandit (human-readable output)
+        run: |
+          echo "=== Bandit Security Scan Results ==="
+          bandit -r app/ || true
+
+      - name: Upload Bandit results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-results
+          path: bandit-results.json
+
+  semgrep:
+    name: Semgrep Pattern Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Semgrep
+        run: pip install semgrep
+
+      - name: Run Semgrep (JSON report)
+        run: |
+          semgrep --config=auto \
+                  --exclude-rule python.django.security.django-no-csrf-token.django-no-csrf-token \
+                  --json \
+                  --output=semgrep-results.json \
+                  app/ || true
+        env:
+          # Optional: set SEMGREP_APP_TOKEN for higher rate limits
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+      - name: Run Semgrep (human-readable output)
+        run: |
+          echo "=== Semgrep Scan Results ==="
+          semgrep --config=auto \
+                  --exclude-rule python.django.security.django-no-csrf-token.django-no-csrf-token \
+                  app/ || true
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+      - name: Upload Semgrep results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semgrep-results
+          path: semgrep-results.json
+
+  trufflehog:
+    name: TruffleHog Secrets Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history for secret scanning
+
+      - name: Run TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch || 'main' }}
+          head: HEAD
+          extra_args: --config .trufflehog.yml --only-verified=false
+        continue-on-error: true  # findings are educational, not blocking
