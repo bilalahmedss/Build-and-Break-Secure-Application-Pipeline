@@ -60,7 +60,7 @@ jobs:
 
       - name: Run Safety (JSON report)
         run: |
-          safety check -r app/requirements.txt \
+          safety scan -r app/requirements.txt \
                        --json > safety-results.json 2>&1 || true
 
       - name: Run Safety (human-readable output)
