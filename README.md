@@ -87,7 +87,8 @@ Python is only required for the non-Docker path or running tests locally.
 ### Option A — Docker (Recommended)
 
 Docker builds the image, initialises the database, and starts the app in one
-command. No Python installation required on the host.
+command. The container serves the Flask app with Gunicorn over local HTTPS, so
+no Python installation is required on the host.
 
 **1. Clone the repository**
 
@@ -132,8 +133,13 @@ docker compose -f docker/docker-compose.yml up
 **4. Open in browser**
 
 ```
-http://localhost:5000
+https://localhost:5000
 ```
+
+The Docker image uses a self-signed local certificate so the session cookie can
+keep the `Secure` flag required by the security findings. Your browser may show
+a privacy warning for this local certificate; choose the advanced/continue
+option for the demo, or trust the generated local certificate on your machine.
 
 **Stop the application**
 
@@ -204,11 +210,13 @@ python app.py
 **6. Open in browser**
 
 ```
-http://localhost:5000
+https://localhost:5000
 ```
 
-The Supabase/Postgres schema is created automatically on first run with the
-schema and three seed accounts.
+For direct Python runs, HTTPS is available when `app/database/cert.pem` and
+`app/database/key.pem` exist. The Docker path creates them automatically. The
+Supabase/Postgres schema is created automatically on first run with the schema
+and three seed accounts.
 
 ---
 
@@ -238,6 +246,8 @@ FLASK_SECRET_KEY=replace-with-a-long-random-string
 ```
 
 The compose file will pick it up automatically via the `environment` block.
+Docker serves `https://localhost:5000` with a self-signed local certificate so
+authenticated sessions can keep `SESSION_COOKIE_SECURE=True`.
 
 ---
 
@@ -254,8 +264,9 @@ The compose file will pick it up automatically via the `environment` block.
 - **Logout** — clears the entire session and redirects to the landing page.
 - **CSRF protection** — every POST form includes a CSRF token generated with
   `secrets.token_urlsafe(32)` and validated server-side before processing.
-- **Session cookie flags** — `HttpOnly` and `SameSite=Lax` are set at the
-  application level.
+- **Session cookie flags** — `HttpOnly`, `Secure`, and `SameSite=Lax` are set
+  at the application level. The Docker runtime serves HTTPS so browsers will
+  send secure session cookies.
 
 ### Role-Based Access Control (RBAC)
 

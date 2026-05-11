@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       target_url:
-        description: "Target URL to scan (default: http://localhost:5000)"
+        description: "Target URL to scan (default: https://localhost:5000)"
         required: false
-        default: "http://localhost:5000"
+        default: "https://localhost:5000"
 
 jobs:
   zap-baseline:
