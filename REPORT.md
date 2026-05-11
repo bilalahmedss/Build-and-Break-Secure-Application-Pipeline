@@ -338,7 +338,7 @@ Push / PR
 | ID | Vulnerability | OWASP Category | CVSSv3 Score | Severity | Source | Status |
 |----|-------------|---------------|-------------|----------|--------|--------|
 | VUL-01 | SQL Injection – Login Form | A03:2021 Injection | 9.8 | 🔴 Critical | SAST + Manual | Fixed |
-| VUL-02 | Hardcoded Flask `SECRET_KEY` | A02:2021 Cryptographic Failures | 9.1 | 🔴 Critical | SAST | Fixed |
+| VUL-02 | Insecure SECRET_KEY Default | A02:2021 Cryptographic Failures | 7.7 | 🟠 High | Manual, SAST | Fixed |
 | VUL-03 | Broken Access Control – Admin Routes (Member/Viewer bypass) | A01:2021 Broken Access Control | 9.1 | 🔴 Critical | DAST + Manual | Fixed |
 | VUL-04 | IDOR – Member Accessing Another Member's Projects/Tasks | A01:2021 Broken Access Control | 7.5 | 🟠 High | Manual | Fixed |
 | VUL-05 | Stored XSS – Project/Task Name Fields | A03:2021 Injection | 7.4 | 🟠 High | DAST + Manual | Fixed |
@@ -406,38 +406,48 @@ An unauthenticated attacker can authenticate as the admin user (or any user) wit
 
 ---
 
-#### VUL-02 — Hardcoded Flask `SECRET_KEY`
+#### VUL-02 — Insecure SECRET_KEY Default
 
 **OWASP Category:** A02:2021 – Cryptographic Failures
-**CVSSv3 Score:** 9.1 (Critical)
-**CVSSv3 Vector:** `CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N`
+**CWE Reference:** CWE-1188 (Initialization of a Resource with an Insecure Default)
+**CVSSv3 Score:** 7.7 (High)
+**CVSSv3 Vector:** `AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:L`
+**Detection Method:** Manual, SAST (Bandit B105)
 
 **Description:**
-The Flask `SECRET_KEY` used to sign session cookies was hardcoded as a short, predictable string in `config.py`. Flask session cookies are client-side signed objects. An attacker who knows the `SECRET_KEY` can forge a valid session cookie with any `user_id` and `role`, bypassing authentication entirely.
+Flask uses `SECRET_KEY` to cryptographically sign session cookies. If an attacker obtains the key, they can forge arbitrary session data (e.g., `{"user_id": 1, "role": "admin"}`) and gain any privilege level without credentials.
 
-**Affected Component:** `config.py`, Line 7
+The fallback `secrets.token_hex(32)` generated a strong key, but it was ephemeral — regenerated on every process restart. The `docker-compose.yml` did not set `FLASK_SECRET_KEY`, so the production container always used a random key that changed on redeploy. This means:
+1. All active sessions were invalidated on every deployment.
+2. If the running process's memory or environment is accessible, the live key could be extracted and used to forge sessions until the next restart.
 
-**Evidence:**
+**Affected Component:** `app/app.py` and `docker/docker-compose.yml`
 
-*Vulnerable Code:*
+**Proof of Concept:**
 ```python
-SECRET_KEY = "secret123"
+# If the SECRET_KEY is obtained (e.g., from process environment):
+import itsdangerous
+from flask.sessions import SecureCookieSessionInterface
+
+class FakeApp:
+    secret_key = "<obtained_key>"
+    session_interface = SecureCookieSessionInterface()
+
+s = SecureCookieSessionInterface().get_signing_serializer(FakeApp())
+
+# Forge an admin session cookie
+forged = s.dumps({"user_id": 1, "role": "admin", "username": "admin"})
+print(forged)
+# Set this as the 'session' cookie → authenticated as admin
 ```
-
-*Exploit — Flask session cookie forge using `flask-unsign`:*
-```bash
-# Decode the existing cookie
-flask-unsign --decode --cookie "<captured-cookie-value>"
-# Output: {'user_id': 3, 'role': 'viewer', '_fresh': True}
-
-# Forge a new cookie as admin
-flask-unsign --sign --secret "secret123" --cookie "{'user_id': 1, 'role': 'admin', '_fresh': True}"
-```
-
-*Screenshot:* [Insert screenshot of forged cookie granting admin access]
 
 **Impact:**
-Any user who captures their own session cookie can forge an admin-level session cookie without any server interaction. All role-based access control is bypassed.
+- Confidentiality: High — forged admin cookie grants access to all data
+- Integrity: High — forged admin cookie grants write/delete/role-change
+- Availability: Low — ephemeral key causes session loss on every restart
+
+**Remediation Applied:**
+Enforced the presence of a persistent `FLASK_SECRET_KEY` at startup. The insecure fallback was removed, and `app.py` now throws a `RuntimeError` if the secret key is missing. The `docker-compose.yml` file was updated to load the secret key dynamically via an `env_file` pointing to `.env`. Generated a persistent, secure 64-character hex key locally in `.env` and added `.env` to `.gitignore` to prevent secret leakage.
 
 ---
 
