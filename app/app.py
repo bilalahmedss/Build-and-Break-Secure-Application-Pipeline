@@ -285,7 +285,7 @@ def index():
 
 
 @app.route("/register", methods=["GET", "POST"])
-@limiter.limit("5 per minute", methods=["POST"])
+@limiter.limit("5 per minute; 20 per hour", methods=["POST"])
 def register():
     if g.user:
         return redirect(url_for("dashboard"))
@@ -338,7 +338,7 @@ def register():
 
 
 @app.route("/login", methods=["GET", "POST"])
-@limiter.limit("5 per minute", methods=["POST"])
+@limiter.limit("5 per minute; 20 per hour", methods=["POST"])
 def login():
     if g.user:
         return redirect(url_for("dashboard"))

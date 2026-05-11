@@ -346,7 +346,7 @@ Push / PR
 | VUL-07 | Vulnerable Flask + Werkzeug (CVE-2023-30861, CVE-2023-46136) | A06:2021 Vulnerable Components | 7.5 | 🟠 High | SCA | Fixed |
 | VUL-08 | `DEBUG=True` in Production (Stack Trace Disclosure) | A05:2021 Security Misconfiguration | 5.3 | 🟡 Medium | SAST + Manual | Fixed |
 | VUL-09 | Missing `HttpOnly` / `Secure` Flags on Session Cookie | A05:2021 Security Misconfiguration | 5.4 | 🟡 Medium | DAST | Fixed |
-| VUL-10 | No Rate Limiting on `/login` and `/register` | A07:2021 Auth Failures | 4.3 | 🔵 Low | Manual | Fixed |
+| VUL-10 | No Rate Limiting on `/login` and `/register` | A07:2021 Auth Failures | 7.5 | 🟠 High | Manual | Fixed |
 | VUL-11 | Unauthenticated to Admin Escalation Chain | A07:2021 + A01:2021 | 9.3 | 🔴 Critical | Manual | Fixed |
 
 ---
@@ -570,6 +570,55 @@ return render_template_string(feedback.content)
 ---
 
 > *[VUL-07 through VUL-10: use the same template above, adjusting code and evidence per finding]*
+
+---
+
+#### VUL-10 — Improper Restriction of Authentication Attempts
+
+**OWASP Category:** A07:2021 – Identification and Authentication Failures
+**CWE Reference:** CWE-307 (Improper Restriction of Excessive Authentication Attempts)
+**CVSSv3 Score:** 7.5 (High)
+**CVSSv3 Vector:** `AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N`
+**Detection Method:** Manual
+
+**Description:**
+The `/login` endpoint applies no rate limiting, account lockout, exponential backoff, or CAPTCHA. An unauthenticated attacker may submit an unlimited number of credential combinations without any throttling or blocking. Because seed usernames (`admin`, `member`, `viewer`) are predictable and confirmable via the registration endpoint, the attack surface is fully enumerable.
+
+**Affected Component:** `app/app.py` — `login()` route, `/login` POST
+
+**Proof of Concept:**
+```bash
+# Step 1 — confirm username exists
+curl -s -X POST http://localhost:5000/register \
+  -d "username=admin&email=x@attacker.com&password=Pass1234&confirm_password=Pass1234" \
+  | grep "already registered"
+
+# Step 2 — brute force with no lockout
+while IFS= read -r pass; do
+  resp=$(curl -s -c cookies.txt -b cookies.txt -X POST http://localhost:5000/login \
+    -d "identifier=admin&password=$pass&csrf_token=$(grep csrf cookies.txt | awk '{print $7}')")
+  echo "$pass => $(echo $resp | grep -o 'Welcome back|Invalid')"
+done < /usr/share/wordlists/rockyou.txt
+```
+*Evidence:* No `429 Too Many Requests` is ever returned. The server processes every attempt identically.
+
+**Impact:**
+- Confidentiality: Full — successful brute force yields admin session; all projects, tasks, users, and feedback exposed
+- Integrity: High — admin can create/delete projects, change roles
+- Availability: None
+
+**Remediation Applied:**
+Installed `Flask-Limiter` and applied a per-IP limit to the login and register endpoints.
+```python
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
+limiter = Limiter(get_remote_address, app=app, storage_uri="memory://")
+
+@app.route("/login", methods=["GET", "POST"])
+@limiter.limit("5 per minute; 20 per hour", methods=["POST"])
+def login():
+```
 
 ---
 
