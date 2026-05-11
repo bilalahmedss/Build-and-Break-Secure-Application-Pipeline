@@ -350,6 +350,7 @@ Push / PR
 | VUL-11 | Unauthenticated to Admin Escalation Chain | A07:2021 + A01:2021 | 9.3 | 🔴 Critical | Manual | Fixed |
 | VUL-12 | Missing HTTP Security Headers | A05:2021 Security Misconfiguration | 6.1 | 🟡 Medium | DAST, Manual | Fixed |
 | VUL-13 | Username Enumeration via Registration | A07:2021 Auth Failures | 5.3 | 🟡 Medium | Manual | Fixed |
+| VUL-14 | Role Disclosure in Assignee Dropdown | A01:2021 Broken Access Control | 4.3 | 🟡 Medium | Manual | Fixed |
 
 ---
 
@@ -791,6 +792,35 @@ curl -s -X POST http://localhost:5000/register \
 
 **Remediation Applied:**
 Modified the `/register` logic to eliminate the boolean oracle. If a duplicate username or email is detected, the application now acts exactly as if the account was successfully created, returning the generic "Account created. You can now log in." success message and redirecting the user to the login page. This completely removes the observable discrepancy.
+
+---
+
+#### VUL-14 — Role Disclosure in Assignee Dropdown
+
+**OWASP Category:** A01:2021 – Broken Access Control
+**CWE Reference:** CWE-200 (Exposure of Sensitive Information to an Unauthorized Actor)
+**CVSSv3 Score:** 4.3 (Medium)
+**CVSSv3 Vector:** `AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N`
+**Detection Method:** Manual
+
+**Description:**
+The project detail route unconditionally queried all users and their roles, rendering this information in the task assignee dropdown. Any authenticated member who owned at least one project could read the complete user directory, including every user's role. Non-admin roles should not have visibility into which accounts hold the admin role, as this information aids privilege escalation targeting and social engineering.
+
+**Affected Component:** `app/app.py` — `project_detail()`, `/projects/<id>`
+
+**Proof of Concept:**
+1. Log in as `member@nexus.local` / `Member1234`.
+2. Navigate to `/projects/2` (Campus Events Board — member-owned).
+3. View page source or inspect the "Add task" assignee dropdown.
+4. Observe: `"admin · admin"` is listed, revealing the admin account identity and role.
+
+**Impact:**
+- Confidentiality: Low — reveals the complete user/role directory to members
+- Integrity: None
+- Availability: None
+
+**Remediation Applied:**
+Removed the `role` field from the SQL query in `project_detail()` and updated the `project_detail.html` template to remove the role from the displayed option text. The query now only exposes `id` and `username`.
 
 ---
 

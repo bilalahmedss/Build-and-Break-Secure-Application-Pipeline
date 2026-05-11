@@ -542,7 +542,7 @@ def project_detail(project_id):
         (project_id,),
     ).fetchall()
     users = db.execute(
-        "SELECT id, username, role FROM users ORDER BY username"
+        "SELECT id, username FROM users ORDER BY username"
     ).fetchall()
     db.close()
     return render_template(
