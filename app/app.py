@@ -32,7 +32,9 @@ from flask_limiter.util import get_remote_address
 
 BASE_DIR = os.path.dirname(__file__)
 DATABASE = os.environ.get("DATABASE_PATH", os.path.join(BASE_DIR, "database", "app.db"))
-SECRET_KEY = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
+SECRET_KEY = os.environ.get("FLASK_SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("FLASK_SECRET_KEY environment variable must be set")
 
 ROLES = ("admin", "member", "viewer")
 PROJECT_STATUSES = ("Planning", "Active", "Blocked", "Completed")
