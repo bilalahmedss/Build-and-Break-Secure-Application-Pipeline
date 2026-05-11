@@ -908,14 +908,25 @@ def admin():
 
         if role not in ROLES or target is None:
             flash("Choose a valid user and role.", "danger")
-        elif target["role"] == "admin" and role != "admin":
-            admin_count = db.execute(
-                "SELECT COUNT(*) AS total FROM users WHERE role = 'admin'"
-            ).fetchone()["total"]
-            if admin_count <= 1:
+        else:
+            cursor = db.execute(
+                """
+                UPDATE users
+                SET role = ?
+                WHERE id = ?
+                  AND (
+                    role != 'admin'
+                    OR ? = 'admin'
+                    OR (SELECT COUNT(*) FROM users WHERE role = 'admin') > 1
+                  )
+                """,
+                (role, user_id, role),
+            )
+            if cursor.rowcount == 0 and target["role"] == "admin" and role != "admin":
                 flash("At least one admin account must remain.", "danger")
+            elif cursor.rowcount == 0:
+                flash("Choose a valid user and role.", "danger")
             else:
-                db.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
                 log_activity(
                     db,
                     "user.role_changed",
@@ -925,17 +936,6 @@ def admin():
                 )
                 db.commit()
                 flash("Role updated.", "success")
-        else:
-            db.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
-            log_activity(
-                db,
-                "user.role_changed",
-                "user",
-                user_id,
-                {"new_role": role},
-            )
-            db.commit()
-            flash("Role updated.", "success")
 
     users = db.execute(
         """

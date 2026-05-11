@@ -193,6 +193,52 @@ def test_admin_can_access_admin_page_and_update_roles(client):
     assert b"Role updated" in response.data
 
 
+def test_admin_cannot_demote_only_admin(client):
+    login(client, "admin", "Admin1234")
+
+    response = client.post(
+        "/admin",
+        data={"user_id": "1", "role": "member"},
+        follow_redirects=True,
+    )
+    assert b"At least one admin account must remain" in response.data
+
+    from app.app import get_db
+
+    db = get_db()
+    admin = db.execute("SELECT role FROM users WHERE id = ?", ("1",)).fetchone()
+    db.close()
+    assert admin["role"] == "admin"
+
+
+def test_admin_can_demote_admin_when_another_admin_exists(client):
+    login(client, "admin", "Admin1234")
+
+    promote_response = client.post(
+        "/admin",
+        data={"user_id": "3", "role": "admin"},
+        follow_redirects=True,
+    )
+    assert b"Role updated" in promote_response.data
+
+    demote_response = client.post(
+        "/admin",
+        data={"user_id": "1", "role": "member"},
+        follow_redirects=True,
+    )
+    assert b"Role updated" in demote_response.data
+
+    from app.app import get_db
+
+    db = get_db()
+    roles = db.execute(
+        "SELECT id, role FROM users WHERE id IN (?, ?) ORDER BY id",
+        ("1", "3"),
+    ).fetchall()
+    db.close()
+    assert [user["role"] for user in roles] == ["member", "admin"]
+
+
 def test_admin_can_review_activity_log(client):
     login(client)
     client.post(
