@@ -41,13 +41,13 @@ jobs:
         run: |
           echo "Waiting for app to start..."
           timeout 60 bash -c \
-            'until curl -sf http://localhost:5000 > /dev/null; do sleep 2; done'
+            'until curl -skf https://localhost:5000 > /dev/null; do sleep 2; done'
           echo "Application is ready."
 
       - name: Run OWASP ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.12.0
         with:
-          target: ${{ github.event.inputs.target_url || 'http://localhost:5000' }}
+          target: ${{ github.event.inputs.target_url || 'https://localhost:5000' }}
           rules_file_name: ".zap/rules.tsv"
           cmd_options: "-a -j"     # -a: AJAX spider, -j: use JSON report
           fail_action: false       # record findings without failing the pipeline
