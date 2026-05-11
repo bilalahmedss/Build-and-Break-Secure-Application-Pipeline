@@ -47,6 +47,7 @@ PROJECT_STATUSES = ("Planning", "Active", "Blocked", "Completed")
 TASK_STATUSES = ("Todo", "In Progress", "Done")
 TASK_PRIORITIES = ("Low", "Medium", "High")
 FEEDBACK_CATEGORIES = ("Bug", "Security", "Feature", "General")
+PASSWORD_RE = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{10,}$")
 
 app = Flask(__name__)
 app.config.update(
@@ -351,8 +352,11 @@ def register():
             errors.append("Username must be 3 to 30 characters and use letters, numbers, dot, dash, or underscore.")
         if not is_valid_email(email):
             errors.append("Enter a valid email address.")
-        if len(password) < 8 or not re.search(r"\d", password):
-            errors.append("Password must be at least 8 characters and include a number.")
+        if not PASSWORD_RE.fullmatch(password):
+            errors.append(
+                "Password must be at least 10 characters and include uppercase, "
+                "lowercase, a number, and a special character."
+            )
         if password != confirm_password:
             errors.append("Passwords do not match.")
 

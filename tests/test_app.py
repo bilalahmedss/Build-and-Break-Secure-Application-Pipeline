@@ -84,8 +84,8 @@ def test_register_validates_and_creates_member(client):
         data={
             "username": "newmember",
             "email": "newmember@example.com",
-            "password": "Pass12345",
-            "confirm_password": "Pass12345",
+            "password": "Pass12345!",
+            "confirm_password": "Pass12345!",
         },
         follow_redirects=True,
     )
@@ -94,10 +94,37 @@ def test_register_validates_and_creates_member(client):
 
     response = client.post(
         "/login",
-        data={"identifier": "newmember", "password": "Pass12345"},
+        data={"identifier": "newmember", "password": "Pass12345!"},
         follow_redirects=True,
     )
     assert b"Dashboard" in response.data
+
+
+@pytest.mark.parametrize(
+    "password",
+    [
+        "password1",
+        "12345678",
+        "aaaaaaaa1",
+        "letmein1",
+        "Password123",
+        "password123!",
+        "PASSWORD123!",
+        "Password!!!",
+    ],
+)
+def test_register_rejects_weak_passwords(client, password):
+    response = client.post(
+        "/register",
+        data={
+            "username": "weakmember",
+            "email": "weakmember@example.com",
+            "password": password,
+            "confirm_password": password,
+        },
+        follow_redirects=True,
+    )
+    assert b"at least 10 characters" in response.data
 
 
 def test_register_rejects_duplicate_user(client):
@@ -106,8 +133,8 @@ def test_register_rejects_duplicate_user(client):
         data={
             "username": "member",
             "email": "other@example.com",
-            "password": "Pass12345",
-            "confirm_password": "Pass12345",
+            "password": "Pass12345!",
+            "confirm_password": "Pass12345!",
         },
         follow_redirects=True,
     )
