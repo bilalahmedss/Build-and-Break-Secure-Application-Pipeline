@@ -323,3 +323,15 @@ def test_task_create_update_delete(client):
 
     response = client.post("/tasks/3/delete", follow_redirects=True)
     assert b"Task deleted" in response.data
+
+
+def test_project_task_assignee_dropdown_does_not_disclose_roles(client):
+    login(client, "member", "Member1234")
+
+    response = client.get("/projects/2")
+
+    assert response.status_code == 200
+    assert b"admin &#183; admin" not in response.data
+    assert b"member &#183; member" not in response.data
+    assert b"viewer &#183; viewer" not in response.data
+    assert b'<option value="1">admin</option>' in response.data
