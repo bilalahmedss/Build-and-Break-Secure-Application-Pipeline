@@ -10,13 +10,20 @@ def app():
 
     import importlib
 
+    os.environ.setdefault("FLASK_SECRET_KEY", "test-secret")
+    os.environ.setdefault("ADMIN_PASSWORD", "Admin1234")
+    os.environ.setdefault("MEMBER_PASSWORD", "Member1234")
+    os.environ.setdefault("VIEWER_PASSWORD", "Viewer1234")
+    os.environ.setdefault("RATELIMIT_ENABLED", "0")
+
     flask_app_module = importlib.import_module("app.app")
 
-    flask_app_module.DATABASE = db_path
+    flask_app_module.DATABASE_URL = "sqlite:///" + db_path.replace("\\", "/")
     flask_app_module.app.config.update(
         TESTING=True,
         SECRET_KEY="test-secret",
         CSRF_ENABLED=False,
+        RATELIMIT_ENABLED=False,
     )
 
     with flask_app_module.app.app_context():
@@ -104,7 +111,7 @@ def test_register_rejects_duplicate_user(client):
         },
         follow_redirects=True,
     )
-    assert b"Account created" in response.data
+    assert b"already registered" in response.data
 
 
 def test_protected_routes_redirect_when_unauthenticated(client):
@@ -184,6 +191,26 @@ def test_admin_can_access_admin_page_and_update_roles(client):
         follow_redirects=True,
     )
     assert b"Role updated" in response.data
+
+
+def test_admin_can_review_activity_log(client):
+    login(client)
+    client.post(
+        "/projects/new",
+        data={
+            "title": "Activity Trail",
+            "description": "Confirm meaningful actions are saved to the activity log.",
+            "status": "Active",
+        },
+        follow_redirects=True,
+    )
+    client.get("/logout", follow_redirects=True)
+
+    login(client, "admin", "Admin1234")
+    response = client.get("/admin")
+
+    assert response.status_code == 200
+    assert b"project.created" in response.data
 
 
 def test_feedback_submission(client):

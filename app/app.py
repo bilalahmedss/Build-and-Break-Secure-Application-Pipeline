@@ -10,7 +10,6 @@ search/filtering, and persistence for security testing.
 import os
 import re
 import secrets
-import sqlite3
 from datetime import datetime
 from functools import wraps
 
@@ -29,12 +28,19 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
+try:
+    from .db import connect_database, ensure_database_parent, resolve_database_url, schema_path_for
+except ImportError:
+    from db import connect_database, ensure_database_parent, resolve_database_url, schema_path_for
+
 
 BASE_DIR = os.path.dirname(__file__)
-DATABASE = os.environ.get("DATABASE_PATH", os.path.join(BASE_DIR, "database", "app.db"))
+DATABASE_URL = resolve_database_url(BASE_DIR)
 SECRET_KEY = os.environ.get("FLASK_SECRET_KEY")
 if not SECRET_KEY:
-    raise RuntimeError("FLASK_SECRET_KEY environment variable must be set")
+    if os.environ.get("FLASK_ENV") == "production":
+        raise RuntimeError("FLASK_SECRET_KEY environment variable must be set")
+    SECRET_KEY = secrets.token_hex(32)
 
 ROLES = ("admin", "member", "viewer")
 PROJECT_STATUSES = ("Planning", "Active", "Blocked", "Completed")
@@ -48,6 +54,7 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SECURE=True,
     SESSION_COOKIE_SAMESITE="Lax",
+    RATELIMIT_ENABLED=os.environ.get("RATELIMIT_ENABLED", "1") != "0",
 )
 
 limiter = Limiter(
@@ -72,16 +79,13 @@ def set_security_headers(response):
 
 
 def get_db():
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    return connect_database(DATABASE_URL)
 
 
 def init_db():
     """Create schema and seed demo users/data if missing."""
-    os.makedirs(os.path.dirname(DATABASE), exist_ok=True)
-    schema_path = os.path.join(BASE_DIR, "database", "init.sql")
+    ensure_database_parent(DATABASE_URL)
+    schema_path = schema_path_for(BASE_DIR, DATABASE_URL)
 
     db = get_db()
     with open(schema_path, encoding="utf-8") as schema_file:
@@ -152,19 +156,37 @@ def seed_projects(db):
             (title, description, status, owner_id),
         )
 
+    security_project = db.execute(
+        "SELECT id FROM projects WHERE title = ?",
+        ("Security Review Portal",),
+    ).fetchone()
     db.execute(
         """
         INSERT INTO tasks (project_id, title, assignee_id, status, priority, due_date)
-        VALUES (1, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
-        ("Document STRIDE threats", member["id"], "In Progress", "High", "2026-05-03"),
+        (
+            security_project["id"],
+            "Document STRIDE threats",
+            member["id"],
+            "In Progress",
+            "High",
+            "2026-05-03",
+        ),
     )
     db.execute(
         """
         INSERT INTO tasks (project_id, title, assignee_id, status, priority, due_date)
-        VALUES (1, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
-        ("Review executive summary", viewer["id"], "Todo", "Medium", "2026-05-08"),
+        (
+            security_project["id"],
+            "Review executive summary",
+            viewer["id"],
+            "Todo",
+            "Medium",
+            "2026-05-08",
+        ),
     )
 
 
@@ -255,6 +277,19 @@ def can_edit_content():
     return g.user and g.user["role"] in ("admin", "member")
 
 
+def log_activity(db, action, entity_type, entity_id=None, details=None, actor_id=None):
+    if actor_id is None and g.get("user"):
+        actor_id = g.user["id"]
+
+    db.execute(
+        """
+        INSERT INTO activity_log (actor_id, action, entity_type, entity_id, details)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (actor_id, action, entity_type, entity_id, details or {}),
+    )
+
+
 def is_valid_email(email):
     return bool(re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email or ""))
 
@@ -334,15 +369,23 @@ def register():
         
         if duplicate:
             db.close()
-            flash("Account created. You can now log in.", "success")
-            return redirect(url_for("login"))
+            flash("Username or email is already registered.", "danger")
+            return render_template("register.html", username=username, email=email)
 
-        db.execute(
+        cursor = db.execute(
             """
             INSERT INTO users (username, email, password_hash, role)
             VALUES (?, ?, ?, 'member')
             """,
             (username, email, generate_password_hash(password)),
+        )
+        log_activity(
+            db,
+            "user.registered",
+            "user",
+            getattr(cursor, "lastrowid", None),
+            {"username": username, "email": email, "role": "member"},
+            actor_id=getattr(cursor, "lastrowid", None),
         )
         db.commit()
         db.close()
@@ -380,6 +423,16 @@ def login():
             session["username"] = user["username"]
             session["csrf_token"] = secrets.token_urlsafe(32)
             session.permanent = False
+            audit_db = get_db()
+            log_activity(
+                audit_db,
+                "user.login",
+                "session",
+                details={"username": user["username"]},
+                actor_id=user["id"],
+            )
+            audit_db.commit()
+            audit_db.close()
             flash(f"Welcome back, {user['username']}.", "success")
             return redirect(url_for("dashboard"))
 
@@ -391,6 +444,10 @@ def login():
 @app.route("/logout")
 @login_required
 def logout():
+    db = get_db()
+    log_activity(db, "user.logout", "session", details={"username": g.user["username"]})
+    db.commit()
+    db.close()
     session.clear()
     flash("You have been logged out.", "info")
     return redirect(url_for("index"))
@@ -484,7 +541,7 @@ def projects():
         WHERE (? = '' OR p.title LIKE ? OR p.description LIKE ?)
           AND (? = '' OR p.status = ?)
           AND (? != 'member' OR p.owner_id = ?)
-        GROUP BY p.id
+        GROUP BY p.id, u.username
         ORDER BY p.updated_at DESC
         """,
         tuple(params),
@@ -505,12 +562,19 @@ def new_project():
             return render_template("project_form.html", project=form_project, mode="Create")
 
         db = get_db()
-        db.execute(
+        cursor = db.execute(
             """
             INSERT INTO projects (title, description, status, owner_id)
             VALUES (?, ?, ?, ?)
             """,
             (title, description, status, g.user["id"]),
+        )
+        log_activity(
+            db,
+            "project.created",
+            "project",
+            getattr(cursor, "lastrowid", None),
+            {"title": title, "status": status},
         )
         db.commit()
         db.close()
@@ -579,6 +643,13 @@ def edit_project(project_id):
             """,
             (title, description, status, project_id),
         )
+        log_activity(
+            db,
+            "project.updated",
+            "project",
+            project_id,
+            {"title": title, "status": status},
+        )
         db.commit()
         db.close()
         flash("Project updated.", "success")
@@ -597,6 +668,13 @@ def delete_project(project_id):
 
     db = get_db()
     db.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+    log_activity(
+        db,
+        "project.deleted",
+        "project",
+        project_id,
+        {"title": project["title"]},
+    )
     db.commit()
     db.close()
     flash("Project deleted.", "success")
@@ -642,7 +720,7 @@ def create_task(project_id):
         return redirect(url_for("project_detail", project_id=project_id))
 
     db = get_db()
-    db.execute(
+    cursor = db.execute(
         """
         INSERT INTO tasks (project_id, title, assignee_id, status, priority, due_date)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -652,6 +730,13 @@ def create_task(project_id):
     db.execute(
         "UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         (project_id,),
+    )
+    log_activity(
+        db,
+        "task.created",
+        "task",
+        getattr(cursor, "lastrowid", None),
+        {"project_id": project_id, "title": title, "status": status, "priority": priority},
     )
     db.commit()
     db.close()
@@ -699,6 +784,13 @@ def update_task(task_id):
         "UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         (task["project_id"],),
     )
+    log_activity(
+        db,
+        "task.updated",
+        "task",
+        task_id,
+        {"project_id": task["project_id"], "status": status, "priority": priority},
+    )
     db.commit()
     db.close()
     flash("Task updated.", "success")
@@ -731,6 +823,13 @@ def delete_task(task_id):
         "UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         (task["project_id"],),
     )
+    log_activity(
+        db,
+        "task.deleted",
+        "task",
+        task_id,
+        {"project_id": task["project_id"], "title": task["title"]},
+    )
     db.commit()
     db.close()
     flash("Task deleted.", "success")
@@ -754,12 +853,19 @@ def feedback():
                 flash(error, "danger")
         else:
             db = get_db()
-            db.execute(
+            cursor = db.execute(
                 """
                 INSERT INTO feedback (user_id, category, message)
                 VALUES (?, ?, ?)
                 """,
                 (g.user["id"], category, message),
+            )
+            log_activity(
+                db,
+                "feedback.submitted",
+                "feedback",
+                getattr(cursor, "lastrowid", None),
+                {"category": category},
             )
             db.commit()
             db.close()
@@ -810,10 +916,24 @@ def admin():
                 flash("At least one admin account must remain.", "danger")
             else:
                 db.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
+                log_activity(
+                    db,
+                    "user.role_changed",
+                    "user",
+                    user_id,
+                    {"new_role": role},
+                )
                 db.commit()
                 flash("Role updated.", "success")
         else:
             db.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
+            log_activity(
+                db,
+                "user.role_changed",
+                "user",
+                user_id,
+                {"new_role": role},
+            )
             db.commit()
             flash("Role updated.", "success")
 
@@ -832,8 +952,22 @@ def admin():
     status_rows = db.execute(
         "SELECT status, COUNT(*) AS total FROM projects GROUP BY status"
     ).fetchall()
+    recent_activity = db.execute(
+        """
+        SELECT a.*, u.username
+        FROM activity_log a
+        LEFT JOIN users u ON u.id = a.actor_id
+        ORDER BY a.created_at DESC
+        LIMIT 10
+        """
+    ).fetchall()
     db.close()
-    return render_template("admin.html", users=users, status_rows=status_rows)
+    return render_template(
+        "admin.html",
+        users=users,
+        status_rows=status_rows,
+        recent_activity=recent_activity,
+    )
 
 
 if __name__ == "__main__":

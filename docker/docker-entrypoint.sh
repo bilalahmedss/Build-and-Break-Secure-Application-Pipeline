@@ -1,23 +1,21 @@
 #!/bin/sh
 # Keep this file checked out with LF line endings for Linux containers.
-# Initialise the SQLite database from init.sql if the DB file does not exist,
-# then start the Flask application.
+# Validate Supabase/Postgres configuration, then start the Flask application.
 
 set -e
 
-DB_PATH="/app/database/app.db"
-SQL_PATH="/app/database/init.sql"
-
-mkdir -p "$(dirname "$DB_PATH")"
-mkdir -p /app/uploads
-
-if [ ! -f "$DB_PATH" ]; then
-  echo "[entrypoint] Initialising database from $SQL_PATH"
-  sqlite3 "$DB_PATH" < "$SQL_PATH"
-  echo "[entrypoint] Database initialised."
-else
-  echo "[entrypoint] Database already exists, skipping init."
+if [ -z "$DATABASE_URL" ]; then
+  echo "[entrypoint] DATABASE_URL is required. Set it to your Supabase Postgres connection string for normal runtime."
+  exit 1
 fi
+
+if [ -z "$FLASK_SECRET_KEY" ]; then
+  echo "[entrypoint] FLASK_SECRET_KEY is required in production."
+  exit 1
+fi
+
+mkdir -p /app/database
+mkdir -p /app/uploads
 
 CERT_PATH="/app/database/cert.pem"
 KEY_PATH="/app/database/key.pem"
