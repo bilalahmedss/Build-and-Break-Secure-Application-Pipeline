@@ -57,8 +57,8 @@
 
 | Severity | Count | Status |
 |----------|-------|--------|
-| Critical | 3 | 3 fixed / 0 open |
-| High | 6 | 6 fixed / 0 open |
+| Critical | 2 | 2 fixed / 0 open |
+| High | 7 | 7 fixed / 0 open |
 | Medium | 5 | 4 fixed / 1 accepted residual |
 | Low | 0 | 0 open |
 | Informational | 0 | 0 open |
@@ -170,7 +170,7 @@ The STRIDE methodology was applied to each major component of the NexusPortal ar
 |---|-----------|----------------|--------------------|----------|-----------|--------|
 | T-01 | Auth | Spoofing | SQL Injection in login form allows authentication bypass | Critical | Parameterized queries implemented | Mitigated |
 | T-02 | Session | Tampering | Ephemeral or hardcoded `SECRET_KEY` allows session forgery | Critical | Persistent, environment-injected secret key | Mitigated |
-| T-03 | RBAC | Elevation of Privilege | Member/Viewer role accessing admin routes via direct URL | Critical | Server-side `@roles_required` decorators | Mitigated |
+| T-03 | RBAC | Elevation of Privilege | Member/Viewer role accessing admin routes via direct URL | High | Server-side `@roles_required` decorators | Mitigated |
 | T-04 | CRUD | Information Disclosure | IDOR via `/project/<id>` allows viewing others' data | High | Server-side ownership validation logic | Mitigated |
 | T-05 | Templates | Elevation of Privilege | Stored XSS via project titles or feedback entries | High | Jinja2 autoescaping + Content Security Policy | Mitigated |
 | T-06 | Logs | Information Disclosure | Flask `DEBUG=True` exposes env vars on error pages | Medium | `DEBUG=False` enforced in production | Mitigated |
@@ -189,7 +189,7 @@ The DREAD model provides a quantitative risk assessment to prioritize remediatio
 |-----------|--------|---|---|---|---|---|-------|----------|
 | **T-01** | SQL Injection (Auth Bypass) | 10 | 9 | 10 | 10 | 9 | **48** | 🔴 Critical |
 | **T-02** | Session Forgery (Secret Key) | 9 | 9 | 8 | 10 | 8 | **44** | 🔴 Critical |
-| **T-03** | Admin Route Bypass | 10 | 8 | 9 | 10 | 7 | **44** | 🔴 Critical |
+| **T-03** | Admin Route Bypass | 10 | 8 | 9 | 10 | 7 | **44** | 🟠 High |
 | **T-04** | IDOR (Project Ownership) | 7 | 8 | 9 | 7 | 8 | **39** | 🟠 High |
 | **T-05** | Stored XSS | 8 | 7 | 8 | 8 | 7 | **38** | 🟠 High |
 | **T-10** | Cleartext Session Cookies | 9 | 7 | 6 | 10 | 6 | **38** | 🟠 High |
@@ -340,7 +340,7 @@ Current retest evidence from the local audit: `python -m pytest tests -q` passed
 |----|-------------|---------------|-------------|----------|--------|--------|
 | VUL-01 | SQL Injection – Login Form | A03:2021 Injection | 9.8 | 🔴 Critical | SAST + Manual | Fixed |
 | VUL-02 | Insecure SECRET_KEY Default | A02:2021 Cryptographic Failures | 7.7 | 🟠 High | Manual, SAST | Fixed |
-| VUL-03 | Broken Access Control – Admin Routes (Member/Viewer bypass) | A01:2021 Broken Access Control | 9.1 | 🔴 Critical | DAST + Manual | Fixed |
+| VUL-03 | Broken Access Control – Admin Routes (Member/Viewer bypass) | A01:2021 Broken Access Control | 8.8 | 🟠 High | DAST + Manual | Fixed |
 | VUL-04 | IDOR – Member Accessing Another Member's Projects/Tasks | A01:2021 Broken Access Control | 7.5 | 🟠 High | Manual | Fixed |
 | VUL-05 | Stored XSS – Project/Task Name Fields | A03:2021 Injection | 7.4 | 🟠 High | DAST + Manual | Fixed |
 | VUL-06 | SSTI via `render_template_string()` with User Input | A03:2021 Injection | 8.8 | 🟠 High | SAST + Manual | Fixed |
@@ -488,9 +488,9 @@ Enforced the presence of a persistent `FLASK_SECRET_KEY` at startup. The insecur
 #### VUL-03 — Broken Access Control (Admin Routes)
 
 **OWASP Category:** A01:2021 – Broken Access Control
-**CVSSv3 Score:** 9.1 (Critical)
+**CVSSv3 Score:** 8.8 (High)
 **CVSSv3 Vector:** `CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H`
-**CVSSv3 Justification:** AV:N (admin routes are reachable over HTTP/S from any browser), AC:L (only requires knowing the URL — no special preconditions), PR:L (attacker must be a registered/logged-in user, but any role suffices), C:H/I:H/A:H (full user directory exposed; role escalation to admin; all data mutable or deletable).
+**CVSSv3 Justification:** AV:N (admin routes are reachable over HTTP/S from any browser), AC:L (only requires knowing the URL — no special preconditions), PR:L (attacker must be a registered/logged-in user, but any role suffices — this reduces the base score from 9.1 to 8.8 compared to an unauthenticated attack), C:H/I:H/A:H (full user directory exposed; role escalation to admin; all data mutable or deletable).
 **Detection Method:** DAST (OWASP ZAP — 403 expected but 200 returned), Manual
 
 **Description:**
