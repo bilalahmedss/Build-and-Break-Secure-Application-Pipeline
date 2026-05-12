@@ -29,7 +29,25 @@ jobs:
       - name: Run Bandit (human-readable output)
         run: |
           echo "=== Bandit Security Scan Results ==="
-          bandit -r app/ || true
+          bandit -r app/
+
+      - name: Quality gate — fail on HIGH or CRITICAL findings
+        run: |
+          python - <<'EOF'
+          import json, sys
+          with open("bandit-results.json") as f:
+              data = json.load(f)
+          high_or_critical = [
+              r for r in data.get("results", [])
+              if r.get("issue_severity", "").upper() in ("HIGH", "CRITICAL")
+          ]
+          if high_or_critical:
+              print(f"QUALITY GATE FAILED: {len(high_or_critical)} HIGH/CRITICAL finding(s):")
+              for r in high_or_critical:
+                  print(f"  [{r['issue_severity']}] {r['test_id']} — {r['filename']}:{r['line_number']} — {r['issue_text']}")
+              sys.exit(1)
+          print("Quality gate passed: no HIGH or CRITICAL Bandit findings.")
+          EOF
 
       - name: Upload Bandit results
         uses: actions/upload-artifact@v4
@@ -73,6 +91,32 @@ jobs:
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 
+      - name: Quality gate — fail on ERROR severity findings
+        run: |
+          python - <<'EOF'
+          import json, sys
+          try:
+              with open("semgrep-results.json") as f:
+                  data = json.load(f)
+          except (FileNotFoundError, json.JSONDecodeError):
+              print("No Semgrep JSON output found — skipping quality gate.")
+              sys.exit(0)
+          blocking = [
+              r for r in data.get("results", [])
+              if r.get("extra", {}).get("severity", "").upper() in ("ERROR", "WARNING")
+          ]
+          if blocking:
+              print(f"QUALITY GATE FAILED: {len(blocking)} ERROR/WARNING Semgrep finding(s):")
+              for r in blocking:
+                  sev = r.get("extra", {}).get("severity", "?")
+                  path = r.get("path", "?")
+                  line = r.get("start", {}).get("line", "?")
+                  msg = r.get("extra", {}).get("message", "")[:120]
+                  print(f"  [{sev}] {path}:{line} — {msg}")
+              sys.exit(1)
+          print("Quality gate passed: no ERROR/WARNING Semgrep findings.")
+          EOF
+
       - name: Upload Semgrep results
         uses: actions/upload-artifact@v4
         if: always()
@@ -96,4 +140,4 @@ jobs:
           base: ${{ github.event.repository.default_branch || 'main' }}
           head: HEAD
           extra_args: --config .trufflehog.yml --only-verified=false
-        continue-on-error: true  # findings are educational, not blocking
+        # TruffleHog exits non-zero when verified secrets are found; treat as blocking
