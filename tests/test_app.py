@@ -325,6 +325,25 @@ def test_task_create_update_delete(client):
     assert b"Task deleted" in response.data
 
 
+def test_sql_injection_login_is_blocked(client):
+    payloads = [
+        ("admin' OR '1'='1' --", "x"),
+        ("' OR 1=1 --", "x"),
+        ("admin'--", "x"),
+        ("x", "' OR '1'='1"),
+    ]
+    for identifier, password in payloads:
+        response = client.post(
+            "/login",
+            data={"identifier": identifier, "password": password},
+            follow_redirects=True,
+        )
+        assert b"Dashboard" not in response.data, (
+            f"SQLi payload succeeded — identifier={identifier!r}"
+        )
+        assert b"Invalid username/email or password" in response.data or response.status_code in (200, 400)
+
+
 def test_project_task_assignee_dropdown_does_not_disclose_roles(client):
     login(client, "member", "Member1234")
 
