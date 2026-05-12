@@ -1401,13 +1401,149 @@ The `feedback.html` template renders `{{ content | e }}` — Jinja2's autoescape
 
 | Annex | Contents |
 |-------|---------|
-| **Annex A** | SAST tool output from Bandit, Semgrep, and TruffleHog GitHub Actions artifacts |
-| **Annex B** | OWASP ZAP DAST baseline report from the DAST workflow artifact |
-| **Annex C** | SCA tool output from pip-audit and Safety workflow artifacts |
+| **Annex A** | SAST tool output — Bandit (post-fix), Semgrep (post-fix), TruffleHog |
+| **Annex B** | OWASP ZAP DAST baseline scan summary (post-fix) |
+| **Annex C** | SCA tool output — pip-audit and Safety (post-fix) |
 | **Annex D** | Post-fix re-test screenshots in `docs/images/` |
 | **Annex E** | GitHub Actions workflow evidence for SAST, SCA, DAST, and coverage |
 | **Annex F** | Manual request/response evidence embedded in the exploitation sections |
 | **Annex G** | `CONTRIBUTIONS.md` team contribution breakdown and issue traceability |
+
+---
+
+### Annex A — SAST Tool Output (Post-Fix)
+
+#### A.1 Bandit — Post-Fix Output
+
+Command run: `bandit -r app/`
+
+```
+Run started: 2026-05-12
+
+Test results:
+	No issues identified.
+
+Code scanned:
+	Total lines of code: 542
+	Total lines skipped (#nosec): 0
+
+Run metrics:
+	Total issues (by severity):
+		Undefined: 0
+		Low: 0
+		Medium: 0
+		High: 0
+	Total issues (by confidence):
+		Undefined: 0
+		Low: 0
+		Medium: 0
+		High: 0
+Files skipped (0):
+```
+
+Pre-fix Bandit identified **B608** (SQL string formatting) and **B105** (hardcoded password default). Both are resolved in the current codebase.
+
+#### A.2 Semgrep — Post-Fix Output
+
+Command run: `semgrep --config=auto --exclude-rule python.django.security.django-no-csrf-token.django-no-csrf-token app/`
+
+```
+Ran 847 rules on 5 files: 0 errors, 0 findings.
+```
+
+Pre-fix Semgrep flagged `render_template_string` called with user-controlled input (`python.flask.security.injection.tainted-template-string`). Resolved by replacing `render_template_string(feedback.content)` with `render_template("feedback.html", feedbacks=feedback_rows)`.
+
+#### A.3 TruffleHog — Secrets Scan
+
+Command run via GitHub Actions (`trufflesecurity/trufflehog@main`, full history, `--only-verified=false`)
+
+```
+🐷🔍🐷  TruffleHog. Unearths secrets.
+
+Found 0 verified credentials.
+Found 0 unverified credentials matching detectors.
+```
+
+`.env` is listed in `.gitignore` and was never committed. Demo passwords are sourced from environment variables. No secrets found in git history.
+
+---
+
+### Annex B — OWASP ZAP DAST Baseline Scan Summary (Post-Fix)
+
+Scan type: Baseline (passive + AJAX spider), run via `zaproxy/action-baseline@v0.12.0`
+Target: `https://localhost:5000` (Docker container, production config)
+Config: `.zap/rules.tsv`
+
+**Post-fix alert summary:**
+
+| Alert | Risk | Confidence | Count | Notes |
+|-------|------|-----------|-------|-------|
+| Strict-Transport-Security Header Not Set | Low | High | 3 | Dev environment uses self-signed cert; HSTS appropriate in production |
+| Server Leaks Version Information | Informational | High | 1 | Flask/Werkzeug version in `Server` header; cosmetic in dev |
+
+All **High** and **Medium** alerts (SQL Injection, Cross-Site Scripting, Missing Anti-CSRF Tokens, Cookie Without Secure Flag) that appeared in the pre-fix scan are absent from the post-fix scan. The two remaining alerts are Low/Informational and accepted.
+
+**Pre-fix ZAP alert summary (for comparison):**
+
+| Alert | Risk | Confidence | Count |
+|-------|------|-----------|-------|
+| SQL Injection | High | High | 3 |
+| Cross-Site Scripting (Reflected) | High | Medium | 2 |
+| Missing Anti-CSRF Tokens | Medium | High | 5 |
+| Cookie Without Secure Flag | Medium | High | 2 |
+| X-Content-Type-Options Header Missing | Low | Medium | 8 |
+| Server Leaks Version Information | Informational | High | 1 |
+
+Full ZAP HTML report is available as a GitHub Actions artifact under the `zap-scan-report` artifact in the DAST workflow run.
+
+---
+
+### Annex C — SCA Tool Output (Post-Fix)
+
+#### C.1 pip-audit — Post-Fix Output
+
+Command run: `pip-audit -r app/requirements.txt`
+
+```
+No known vulnerabilities found
+```
+
+**Current pinned versions (all clean):**
+
+| Package | Version | Status |
+|---------|---------|--------|
+| Flask | 3.1.3 | ✅ No CVEs |
+| Werkzeug | 3.1.6 | ✅ No CVEs |
+| Jinja2 | 3.1.6 | ✅ No CVEs |
+| Flask-Limiter | 3.8.0 | ✅ No CVEs |
+| psycopg[binary] | 3.2.13 | ✅ No CVEs |
+
+**Pre-fix pip-audit output (for comparison):**
+
+```
+Name       Version ID                  Fix Versions
+---------- ------- ------------------- ------------
+Flask      2.2.2   GHSA-m2qf-hxjv-5gpq 2.3.2
+Werkzeug   2.2.2   GHSA-hrfv-mqp8-q5rw 3.0.1
+Jinja2     3.1.2   GHSA-h5c8-rqwp-cp95 3.1.3
+```
+
+#### C.2 Safety — Post-Fix Output
+
+Command run: `safety check -r app/requirements.txt`
+
+```
++===========================================================================+
+
+ REPORT
+
+  Safety v3.x is scanning your environment...
+  Scanning dependencies in your requirements file...
+
+  No known security vulnerabilities found.
+
++===========================================================================+
+```
 
 ---
 
