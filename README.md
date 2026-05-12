@@ -1,6 +1,6 @@
 # NexusPortal
 
-A role-based internal project management web application built as part of the
+A role-based internal project management web application built as part of our
 **Build & Break Secure Application Pipeline** DevSecOps course assignment.
 
 NexusPortal gives teams a real domain application to design, Dockerize, scan
