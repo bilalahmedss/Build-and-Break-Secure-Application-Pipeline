@@ -2,7 +2,7 @@ name: Coverage — Test Suite & Code Coverage
 
 on:
   push:
-    branches: [main, "claude/**", "feature/**", "fix/**", "group-*/**"]
+    branches: [main, "Priority-Fixes", "claude/**", "feature/**", "fix/**", "group-*/**"]
   pull_request:
     branches: [main]
 

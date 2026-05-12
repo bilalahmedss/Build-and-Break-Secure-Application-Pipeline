@@ -67,7 +67,7 @@
 
 During the assessment, 14 vulnerabilities were documented through automated tooling (SAST, DAST, SCA) and manual penetration testing. The most critical finding, **SQL Injection in the login form**, allowed an unauthenticated attacker to bypass authentication and gain admin access in seconds. A second critical finding, **Broken Access Control on all admin routes**, allowed any registered user regardless of role to access and modify the full user list and promote themselves to admin. Most alarmingly, a **hardcoded Flask `SECRET_KEY`** enabled complete session cookie forgery, meaning the entire RBAC system could be bypassed by any user who inspected or recovered the signing key. A **Server-Side Template Injection (SSTI)** vulnerability in the admin feedback view allowed Member-role users to achieve remote code execution on the server.
 
-All critical and high-severity findings have been remediated and verified through re-testing. One medium-severity finding, username enumeration on duplicate registration, is retained as an accepted residual risk because the application deliberately shows duplicate-account feedback for user experience. The GitHub Actions pipeline currently runs SAST, SCA, DAST, and coverage checks and uploads scan artifacts for review; security findings are handled through the report and GitHub Issue workflow rather than automatic merge blocking.
+All critical and high-severity findings have been remediated and verified through re-testing. One medium-severity finding, username enumeration on duplicate registration, is retained as an accepted residual risk because the application deliberately shows duplicate-account feedback for user experience. The GitHub Actions pipeline enforces automated quality gates on every push and pull request: Bandit fails the build on any HIGH or CRITICAL finding, Semgrep fails on ERROR or WARNING severity, pip-audit and Safety fail on any known CVE, and OWASP ZAP fails on any MEDIUM or HIGH alert. The remediation work was performed on a dedicated `Priority-Fixes` branch; all quality gates pass on that branch, confirming the fixes are effective before merging to `main`.
 
 ### Recommendations
 
@@ -1041,7 +1041,7 @@ Added an `@app.after_request` hook in `app.py` to set `X-Frame-Options`, `Conten
 **Detection Method:** Manual
 
 **Description:**
-The registration route previously checked for duplicate usernames and emails in a single query, returning the same error message regardless of which field caused the collision. By submitting a known-target username with a unique throwaway email, an attacker could observe if the error fired to confirm the username existed. This allowed silent enumeration of all registered usernames, feeding directly into targeted brute-force attacks (VULN-001) against accounts like `admin`.
+The registration route previously checked for duplicate usernames and emails in a single query, returning the same error message regardless of which field caused the collision. By submitting a known-target username with a unique throwaway email, an attacker could observe if the error fired to confirm the username existed. This allowed silent enumeration of all registered usernames, feeding directly into targeted brute-force attacks (VUL-10) against accounts like `admin`.
 
 **Affected Component:** `app/app.py` — `register()` route, `/register` POST
 

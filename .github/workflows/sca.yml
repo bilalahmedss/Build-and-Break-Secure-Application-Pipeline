@@ -2,7 +2,7 @@ name: SCA — Software Composition Analysis
 
 on:
   push:
-    branches: [main, "claude/**", "feature/**", "fix/**"]
+    branches: [main, "Priority-Fixes", "claude/**", "feature/**", "fix/**"]
   pull_request:
     branches: [main]
   schedule:
