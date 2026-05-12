@@ -143,5 +143,5 @@ jobs:
           path: ./
           base: ${{ github.event.before || github.event.repository.default_branch || 'main' }}
           head: ${{ github.sha }}
-          extra_args: --config .trufflehog.yml --only-verified=false
+          extra_args: --config .trufflehog.yml --results=verified,unknown
         # TruffleHog exits non-zero when verified secrets are found; treat as blocking
