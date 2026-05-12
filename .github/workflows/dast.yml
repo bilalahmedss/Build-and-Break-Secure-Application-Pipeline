@@ -1,5 +1,6 @@
 name: DAST — Dynamic Application Security Testing (OWASP ZAP)
-
+permissions:
+  issues: write
 on:
   push:
     branches: [main]
