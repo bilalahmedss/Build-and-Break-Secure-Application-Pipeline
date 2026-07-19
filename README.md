@@ -1,10 +1,10 @@
-# NexusPortal
+# NexusPortal — Build and Break Secure Application Pipeline
 
-A role-based internal project management web application built as part of our
-**Build & Break Secure Application Pipeline** DevSecOps course assignment.
+NexusPortal is a role-based project-management application developed as a practical DevSecOps and application-security project.
 
-NexusPortal gives teams a real domain application to design, Dockerize, scan
-with automated security tools, manually pentest, document, remediate, and demo.
+The system was designed, containerized, scanned, manually tested, remediated and retested to demonstrate how security controls can be integrated throughout the software-development lifecycle.
+
+> **Lab notice:** NexusPortal is a portfolio and educational application. The security-testing techniques documented in this repository were performed against the project’s own authorized environment.
 
 ---
 
@@ -34,7 +34,32 @@ with automated security tools, manually pentest, document, remediate, and demo.
 12. [Git Commit Guidelines](#git-commit-guidelines)
 
 ---
+## Secure Development Lifecycle
 
+The project follows a build, test, break, remediate and verify workflow:
+
+1. Design the application and access-control model.
+2. Implement the Flask and PostgreSQL application.
+3. Containerize the application using Docker.
+4. Run automated SAST, SCA and DAST checks.
+5. Perform manual authorization and input-validation testing.
+6. Document identified vulnerabilities and their impact.
+7. Apply remediation controls.
+8. Retest the application and verify the security improvements.
+
+## Security Controls Demonstrated
+
+- Server-side role-based access control
+- Password hashing using scrypt
+- CSRF protection
+- Secure session-cookie configuration
+- Session-fixation prevention
+- Input validation
+- Rate limiting
+- HTTPS for the local Docker environment
+- Activity and administrative logging
+- Automated security checks through GitHub Actions
+---
 ## Application Overview
 
 NexusPortal is a Flask 3 + Supabase/Postgres web application. It implements a
@@ -66,6 +91,7 @@ Three seed accounts are created automatically on first run:
 | Member | `member` | `member@nexus.local` | `Member1234` |
 | Viewer | `viewer` | `viewer@nexus.local` | `Viewer1234` |
 
+> These credentials are intended only for the local demonstration environment. They must never be reused in a deployed or internet-accessible instance. Override all seed passwords through environment variables before using the application outside the lab.
 ---
 
 ## Prerequisites
@@ -93,7 +119,7 @@ no Python installation is required on the host.
 **1. Clone the repository**
 
 ```bash
-git clone https://github.com/IfrahC/Build-and-Break-Secure-Application-Pipeline.git
+git clone https://github.com/bilalahmedss/Build-and-Break-Secure-Application-Pipeline.git
 cd Build-and-Break-Secure-Application-Pipeline
 ```
 
@@ -168,7 +194,7 @@ Use this path for faster iteration during development.
 **1. Clone the repository**
 
 ```bash
-git clone https://github.com/IfrahC/Build-and-Break-Secure-Application-Pipeline.git
+git clone https://github.com/bilalahmedss/Build-and-Break-Secure-Application-Pipeline.git
 cd Build-and-Break-Secure-Application-Pipeline
 ```
 
@@ -599,3 +625,9 @@ git commit -m "Fixes #6, #7: remediate XSS and SQL injection findings"
 
 Auto-close keywords: `close`, `closes`, `closed`, `fix`, `fixes`, `fixed`,
 `resolve`, `resolves`, `resolved`.
+
+## Project Contribution
+
+This was a collaborative academic project. My work included contributing to the application-security testing and remediation process, reviewing access-control and authentication behaviour, documenting security findings, and helping prepare the project as part of the secure application pipeline.
+
+The repository is presented as a record of the team's implementation and my practical learning from the project.
